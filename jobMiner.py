@@ -24,16 +24,19 @@ class JobMiner( object ):
 		f = open("cached", 'wb')
 		pickle.dump( self.data, f )
 
-	def getJobs( self, searchRegions = [], jobCategories=[]):
+	def getJobs( self, searchRegions = [], jobCategories=[], recency=None):
 
 		url = "http://www.jobbank.gc.ca/res-eng.aspx?RchJobType=Reg_jobs"
 		if searchRegions:
 			url += "&CmmGrp=" + ','.join( searchRegions )
 		if jobCategories:
 			url += "&Categ=" + ','.join( jobCategories )
+		if recency:
+			url += "&TmFrm=" + recency
 		url += "&OpPage=50&nsrc=1"
 		
-		page = open('temp', 'rt')
+		#page = open('temp', 'rt')
+		page = urlopen( url )
 		
 		tree = html.parse( page )
 		# Get all of the links from this page, while also grabbing the URL for the next page.
@@ -41,7 +44,7 @@ class JobMiner( object ):
 		executor = concurrent.futures.ThreadPoolExecutor( max_workers=5 )
 		links = [link.attrib['href'] for link in jobLinks]
 
-		ids = map( getId, links[:2] )
+		ids = map( getId, links )
 		jobs = executor.map( self.getJob, ids )
 		# Need to grab subsequent pages too
 		return list( jobs )
@@ -71,11 +74,14 @@ class JobMiner( object ):
 			entry["salary"] = stripStrong( body.xpath("p[@id='salary']")[0] )
 			entry["startDate"] = stripStrong( body.xpath("p[@id='anticipatedStartDate']")[0] )
 			entry["location"] = stripStrong( body.xpath("p[@id='location']")[0] )
+			entry["employer"] = stripStrong( body.xpath("p[@id='employer']")[0] )
 
 			entry['requirements'] = requirements = {}
 			reqs = body.xpath("div[@id='skillRequirements']/div[@class='indent1']")
 			for req in reqs:
 				name = req.xpath("strong")[0].text_content()
+				if name.endswith(': '):
+					name = name[:-2]
 				value = stripStrong( req )
 				requirements[name] = value
 
@@ -83,5 +89,13 @@ class JobMiner( object ):
 		return (jobId, entry)
 
 miner = JobMiner()
-print (miner.getJobs( searchRegions = ["GON008"] ))
+miner.data = {}
+print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
 miner.save()
+reqs = set()
+for jobId, job in miner.data.items():
+	for req in job['requirements']:
+		reqs.add( req )
+	if 'Transportation/Travel Information' in job['requirements'] and 'Own transportation' in job['requirements']['Transportation/Travel Information']:
+		print (jobId)
+print (reqs)
