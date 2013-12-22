@@ -11,10 +11,16 @@ def PNot( p1 ):
 	return lambda x: not p1(x)
 
 def PContains( field, string ):
-	def contains( x ):
+	def contains( field, x ):
 		entry = x
 
-		for subfield in field:
+		for i,subfield in enumerate(field):
+			if subfield == '*':
+				for key in entry:
+					if contains( field[i+1:], entry[key] ):
+						return True
+				return False
+			subfield = subfield.lower()
 			if subfield in entry:
 				entry = entry[subfield]
 			else:
@@ -22,19 +28,28 @@ def PContains( field, string ):
 
 		if hasattr( entry, 'upper' ):
 			return string.upper() in entry.upper()
-	return contains
-
-tokens = ( 'CONTAIN', 'LBRACE', 'RBRACE', 'LPAREN', 'RPAREN', 
-	'LT', 'GT', 'LTE', 'GTE', 'EQ','NE','NOT', 'DOESNT', 'MATCH',
-	'AND', 'OR', 'NUMBER', 'NAME', 'QUADPUNKT', 'STRING')
+		return False
+	def wrap( x ):
+		return contains( field, x )
+	return wrap
 
 reserved = {
 	'and': 'AND',
 	'or': 'OR',
 	'not': 'NOT',
 	'contain': 'CONTAIN',
-	'contains': 'CONTAIN'
+	'contains': 'CONTAIN',
+	'before': 'BEFORE',
+	'after': 'AFTER',
+	'match': 'MATCH',
+	'matches': 'MATCHES'
 }
+
+
+tokens = [ 'CONTAIN', 'LBRACE', 'RBRACE', 'LPAREN', 'RPAREN', 
+	'LT', 'GT', 'LTE', 'GTE', 'EQ','NE','NOT', 'DOESNT', 'MATCH',
+	'AND', 'OR', 'NUMBER', 'NAME', 'QUADPUNKT', 'STRING', 'PATTERN'] + list(reserved.keys())
+
 
 t_AND = 'AND'
 t_OR = 'OR'
@@ -45,6 +60,14 @@ t_RBRACE = r']'
 t_QUADPUNKT = '::'
 t_LPAREN = r'\('
 t_RPAREN = r'\('
+t_PATTERN = r'/[^/]*/'
+
+
+def t_DOESNT(t):
+	"""DOESN'T"""
+	t.type = 'DOESNT'
+	return t
+
 def t_STRING(t):
 	""""([^"]|\\\\")*"|'([^']|\\\\')*'"""
 	quote = t.value[0]
@@ -53,7 +76,7 @@ def t_STRING(t):
 	return t
 
 def t_NAME(t):
-	r"[^]:['\"]+\w"
+	r"\*|[^]:['\"]+\w"
 	if t.value.lower() in reserved.keys():
 		t.type = reserved[t.value.lower()]
 	return t
@@ -94,6 +117,10 @@ def p_condition_contains(p):
 	"""condition : field CONTAIN STRING"""
 	p[0] = PContains( p[1], p[3] )
 
+def p_condition_doesntcontain(p):
+	"""condition : field DOESNT CONTAIN STRING"""
+
+	p[0] = PNot( PContains( p[1], p[4] ) )
 
 def p_field_base(p):
 	"""field : LBRACE NAME optnames RBRACE"""

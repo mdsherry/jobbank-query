@@ -1,3 +1,5 @@
+import re
+
 from lxml import html
 from urllib.request import urlopen
 import concurrent.futures
@@ -69,10 +71,10 @@ class JobMiner( object ):
 			# Need to trim whitespace here
 
 			termsOfEmployment = body.xpath("p[@id='termOfEmployment']")[0]
-			entry['termsOfEmployment'] = stripStrong( termsOfEmployment ).split(', ')
+			entry['termsofemployment'] = stripStrong( termsOfEmployment ).split(', ')
 
 			entry["salary"] = stripStrong( body.xpath("p[@id='salary']")[0] )
-			entry["startDate"] = stripStrong( body.xpath("p[@id='anticipatedStartDate']")[0] )
+			entry["startdate"] = stripStrong( body.xpath("p[@id='anticipatedStartDate']")[0] )
 			entry["location"] = stripStrong( body.xpath("p[@id='location']")[0] )
 			entry["employer"] = stripStrong( body.xpath("p[@id='employer']")[0] )
 
@@ -80,23 +82,25 @@ class JobMiner( object ):
 			reqs = body.xpath("div[@id='skillRequirements']/div[@class='indent1']")
 			for req in reqs:
 				name = req.xpath("strong")[0].text_content()
-				if name.endswith(': '):
-					name = name[:-2]
+				name = name.replace("Type of", "")
+				name = re.sub( "\W","", name )
+				
 				value = stripStrong( req )
-				requirements[name] = value
+				requirements[name.lower()] = value
 
 		self.data[jobId] = entry
 		return (jobId, entry)
 
 if __name__ == "__main__":
 	miner = JobMiner()
-	
-	#print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
-	#miner.save()
+	# miner.data = {}
+	# print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
+	# miner.save()
 	reqs = set()
 	from grammar import parse
-	#p = parse("not [requirements::Transporation/Travel Information] contains 'Own transportation'")
-	p = parse("[requirements::Languages] contains \"English\"")
+	p = parse("[requirements::*] doesn't contain 'Drug test'")
+	#p = parse("[requirements::Languages] doesn't contain \"French\"")
+
 	for jobId, job in miner.data.items():
 		for req in job['requirements']:
 			reqs.add( req )
