@@ -88,14 +88,19 @@ class JobMiner( object ):
 		self.data[jobId] = entry
 		return (jobId, entry)
 
-miner = JobMiner()
-miner.data = {}
-print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
-miner.save()
-reqs = set()
-for jobId, job in miner.data.items():
-	for req in job['requirements']:
-		reqs.add( req )
-	if 'Transportation/Travel Information' in job['requirements'] and 'Own transportation' in job['requirements']['Transportation/Travel Information']:
-		print (jobId)
-print (reqs)
+if __name__ == "__main__":
+	miner = JobMiner()
+	
+	#print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
+	#miner.save()
+	reqs = set()
+	from grammar import parse
+	#p = parse("not [requirements::Transporation/Travel Information] contains 'Own transportation'")
+	p = parse("[requirements::Languages] contains \"English\"")
+	for jobId, job in miner.data.items():
+		for req in job['requirements']:
+			reqs.add( req )
+		if p(job):
+			print (job['requirements'])
+		
+	print (reqs)
