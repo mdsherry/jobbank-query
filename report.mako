@@ -2,12 +2,18 @@
 <head>
 	<title>JobBank report</title>
 	<style>
-	code pre { margin-left: 1em; padding: 1em; border: 1px dashed #000; background: #eee;}
+	code { 
+		display:block; 
+		margin: 1em; 
+		padding: 1em; 
+		border: 1px dashed #000; 
+		background: #eee;
+	}
 	</style>
 </head>
 <body>
 JobBank query generated ${date} from query
-<code><pre>${query}</pre></code>
+<code>${query}</code>
 
 ${len(results)} results out of ${nJobs} jobs total.
 <table>
