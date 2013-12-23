@@ -1,4 +1,5 @@
 import re
+import operator
 from ply import lex, yacc
 
 def PAnd( p1, p2 ):
@@ -10,56 +11,46 @@ def POr( p1, p2 ):
 def PNot( p1 ):
 	return lambda x: not p1(x)
 
+def predOnFields( field, entry, pred ):
+	for i,subfield in enumerate(field):
+		if subfield == '*':
+			for key in entry:
+				if predOnFields( field[i+1:], entry[key], pred ):
+					return True
+			return False
+		subfield = subfield.lower()
+		if subfield in entry:
+			entry = entry[subfield]
+		else:
+			return False
+
+	return pred( entry )
+
 def PContains( field, string ):
-	def contains( field, x ):
-		entry = x
-
-		for i,subfield in enumerate(field):
-			if subfield == '*':
-				for key in entry:
-					if contains( field[i+1:], entry[key] ):
-						return True
-				return False
-			subfield = subfield.lower()
-			if subfield in entry:
-				entry = entry[subfield]
-			else:
-				return False
-
+	def pred( entry ):
 		if hasattr( entry, 'upper' ):
 			return string.upper() in entry.upper()
 		return False
-	def wrap( x ):
-		return contains( field, x )
-	return wrap
+	
+	return lambda entry: predOnFields( field, entry, pred )
 
 
 def PMatches( field, pattern ):
 	pattern = re.compile( pattern[1:-1] )
-	def contains( field, x ):
-		entry = x
-
-		for i,subfield in enumerate(field):
-			if subfield == '*':
-				for key in entry:
-					if contains( field[i+1:], entry[key] ):
-						return True
-				return False
-			subfield = subfield.lower()
-			if subfield in entry:
-				entry = entry[subfield]
-			else:
-				return False
-
-		if hasattr( entry, 'upper' ):
-			if pattern.match( entry, re.IGNORECASE ):
-				return True
+		
+	def pred( entry ):
+		if pattern.match( entry, re.IGNORECASE ):
+			return True
 		return False
-	def wrap( x ):
-		return contains( field, x )
-	return wrap
+	
+	return lambda entry: predOnFields( field, entry, pred )
+	
 
-
+def PCompare( field, value, op ):
+	value = float( value )
+	def pred( entry ):
+		return op( float( entry ), value )
+	return lambda entry: predOnFields( field, entry, pred )
 
 reserved = {
 	'and': 'AND',
@@ -114,7 +105,7 @@ def t_STRING(t):
 	return t
 
 def t_NAME(t):
-	r"\*|\w+"
+	r"\*|[a-zA-Z_]\w*(-\w+)?"
 	if t.value.lower() in reserved.keys():
 		t.type = reserved[t.value.lower()]
 	return t
@@ -164,6 +155,22 @@ def p_condition_doesntcontain(p):
 	"""condition : field DOESNT CONTAIN STRING"""
 
 	p[0] = PNot( PContains( p[1], p[4] ) )
+
+def p_condition_numcompare( p ):
+	"""condition : field GT NUMBER
+	             | field GTE NUMBER
+	             | field LT NUMBER
+	             | field LTE NUMBER
+	             | field EQ NUMBER
+	             | field NE NUMBER
+	"""
+	p[0] = PCompare( p[1], p[3], {
+		'=': operator.eq, 
+		'!=': operator.ne, 
+		'<': operator.lt,
+		'>': operator.gt,
+		'<=': operator.le,
+		'>=': operator.ge }[p[2]])
 
 def p_field_base(p):
 	"""field : LBRACE NAME optnames RBRACE"""
