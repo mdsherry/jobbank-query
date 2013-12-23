@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import re
 
 from lxml import html
@@ -13,6 +14,34 @@ def stripStrong( el ):
 	el.xpath("strong")[0].drop_tree()
 	return el.text_content()
 
+def parseSalary( s ):
+	# Check for hourly first
+	match = re.match(r"\$([0123456789,.]+)\s+to\s+\$([0123456789,.]+)\s+Hourly", s, re.IGNORECASE )
+	if match:
+		return float( match.group(1).replace(',','') ), float( match.group(2).replace(',','') )
+	match = re.match(r"\$([0123456789,.]+)\s+Hourly", s, re.IGNORECASE )
+	if match:
+		return float( match.group(1).replace(',','') ), float( match.group(1).replace(',','') )
+	low = high = None
+	match = re.match(r"\$([0123456789,.]+)\s+to\s+\$([0123456789,.]+)\s+Yearly", s, re.IGNORECASE )
+	if match:
+		low, high = float( match.group(1).replace(',','') ), float( match.group(2).replace(',','') )
+	else:
+		match = re.match(r"\$([0123456789,.]+)\s+Yearly", s, re.IGNORECASE )
+		if match:
+			low, high = float( match.group(1).replace(',','') ), float( match.group(1).replace(',','') )
+
+	if low:
+		match = re.match( r".*for\s+([0-9.,]+)\s+hours\s+per\s+week", s, re.IGNORECASE )
+		if match:
+			hours = float( match.group(1).replace(',','') )
+			weeksPerYear = 52.125 # Average
+			low /= (weeksPerYear * hours)
+			high /= (weeksPerYear * hours)
+			return low, high
+		else:
+			return low / 2087, high / 2087
+	return 0, 0
 class JobMiner( object ):
 
 	def __init__( self ):
@@ -67,6 +96,7 @@ class JobMiner( object ):
 			return None
 		else:
 			title = body.xpath("//span[@class='JobTitle']")[0]
+			entry['id'] = jobId
 			entry['title'] = title.text_content()
 			# Need to trim whitespace here
 
@@ -74,6 +104,14 @@ class JobMiner( object ):
 			entry['termsofemployment'] = stripStrong( termsOfEmployment ).split(', ')
 
 			entry["salary"] = stripStrong( body.xpath("p[@id='salary']")[0] )
+			
+			entry["salary-low"], entry["salary-high"] = parseSalary( entry["salary"] )
+			if entry["salary-low"] > 1000:
+				# Some people say hourly instead of yearly. Let's correct their mistake and try again.
+				entry["salary"] = entry["salary"].replace("Hourly", "Yearly", 1)
+				entry["salary-low"], entry["salary-high"] = parseSalary( entry["salary"] )
+			entry['salaried'] = 'Yearly' in entry["salary"]
+
 			entry["startdate"] = stripStrong( body.xpath("p[@id='anticipatedStartDate']")[0] )
 			entry["location"] = stripStrong( body.xpath("p[@id='location']")[0] )
 			entry["employer"] = stripStrong( body.xpath("p[@id='employer']")[0] )
@@ -92,19 +130,45 @@ class JobMiner( object ):
 		return (jobId, entry)
 
 if __name__ == "__main__":
+	import argparse
+	import sys
+	parser = argparse.ArgumentParser( description="Processes JobBank.gc.ca jobs")
+	parser.add_argument('--scrape', action="store_true", help='Scrape jobs from the site')
+	parser.add_argument('--query', help='Query to run against collected jobs')
+	parser.add_argument('--file', type=argparse.FileType('wt'), default=sys.stdout, help="Filename to use for output (defaults to stdout)")
+	parser.add_argument('--listreqs', action="store_true", help="List requirement names")
+	args = parser.parse_args()
 	miner = JobMiner()
-	# miner.data = {}
-	# print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
+	for k,v in miner.data.items():
+		v['salary-low'], v['salary-high'] = parseSalary( v['salary'] )
+		if v["salary-low"] > 1000:
+			# Some people say hourly instead of yearly. Let's correct their mistake and try again.
+			v["salary"] = v["salary"].replace("Hourly", "Yearly", 1)
+			v["salary-low"], v["salary-high"] = parseSalary( v["salary"] )
 	# miner.save()
+	if args.scrape:
+		print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
+		miner.save()
 	reqs = set()
 	from grammar import parse
-	p = parse("[requirements::*] doesn't contain 'Drug test'")
+	if args.query:
+		p = parse( args.query )
+	else:
+		p = lambda x: False
+	results = []
+	#p = parse("[requirements::*] matches /.*Drug test.*/")
 	#p = parse("[requirements::Languages] doesn't contain \"French\"")
 
 	for jobId, job in miner.data.items():
 		for req in job['requirements']:
 			reqs.add( req )
-		if p(job):
-			print (job['requirements'])
-		
-	print (reqs)
+		if p( job ):
+			results.append( job )
+	if args.listreqs:
+		args.file.write('\n'.join(sorted(reqs)))
+		args.file.write("\n")
+	if results:
+		from mako.template import Template
+		mytemplate = Template( filename="report.mako" )
+		import datetime
+		args.file.write( mytemplate.render( results=results, date=datetime.datetime.now(), query=args.query ) )

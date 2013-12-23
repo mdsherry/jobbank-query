@@ -33,6 +33,34 @@ def PContains( field, string ):
 		return contains( field, x )
 	return wrap
 
+
+def PMatches( field, pattern ):
+	pattern = re.compile( pattern[1:-1] )
+	def contains( field, x ):
+		entry = x
+
+		for i,subfield in enumerate(field):
+			if subfield == '*':
+				for key in entry:
+					if contains( field[i+1:], entry[key] ):
+						return True
+				return False
+			subfield = subfield.lower()
+			if subfield in entry:
+				entry = entry[subfield]
+			else:
+				return False
+
+		if hasattr( entry, 'upper' ):
+			if pattern.match( entry, re.IGNORECASE ):
+				return True
+		return False
+	def wrap( x ):
+		return contains( field, x )
+	return wrap
+
+
+
 reserved = {
 	'and': 'AND',
 	'or': 'OR',
@@ -42,26 +70,36 @@ reserved = {
 	'before': 'BEFORE',
 	'after': 'AFTER',
 	'match': 'MATCH',
-	'matches': 'MATCHES'
+	'matches': 'MATCH'
 }
 
+def uniq( l ):
+	result = []
+	last = None
+	for el in sorted( l ):
+		if el != last:
+			result.append( el )
+			last = el
+	return result
 
-tokens = [ 'CONTAIN', 'LBRACE', 'RBRACE', 'LPAREN', 'RPAREN', 
-	'LT', 'GT', 'LTE', 'GTE', 'EQ','NE','NOT', 'DOESNT', 'MATCH',
-	'AND', 'OR', 'NUMBER', 'NAME', 'QUADPUNKT', 'STRING', 'PATTERN'] + list(reserved.keys())
+tokens = [ 'LBRACE', 'RBRACE', 'LPAREN', 'RPAREN', 'DOESNT',
+	'LT', 'GT', 'LTE', 'GTE', 'EQ','NE', 'NUMBER', 
+	'NAME', 'QUADPUNKT', 'STRING', 'PATTERN'] + uniq( list(reserved.values()) )
 
 
-t_AND = 'AND'
-t_OR = 'OR'
-t_NOT = 'NOT'
-t_CONTAIN = r"CONTAINS?"
 t_LBRACE = r'\['
 t_RBRACE = r']'
 t_QUADPUNKT = '::'
 t_LPAREN = r'\('
 t_RPAREN = r'\('
 t_PATTERN = r'/[^/]*/'
-
+t_LT = '<'
+t_LTE = '<='
+t_GT = '>'
+t_GTE = '>='
+t_EQ = '='
+t_NE = '!='
+t_NUMBER = r'\d+(\.\d+)?'
 
 def t_DOESNT(t):
 	"""DOESN'T"""
@@ -76,7 +114,7 @@ def t_STRING(t):
 	return t
 
 def t_NAME(t):
-	r"\*|[^]:['\"]+\w"
+	r"\*|\w+"
 	if t.value.lower() in reserved.keys():
 		t.type = reserved[t.value.lower()]
 	return t
@@ -112,6 +150,11 @@ def p_query_condition(p):
 	"""query : condition"""
 	p[0] = p[1]
 
+
+def p_condition_matches(p):
+	"""condition : field MATCH PATTERN"""
+	p[0] = PMatches( p[1], p[3] )
+	print( p[0] )
 
 def p_condition_contains(p):
 	"""condition : field CONTAIN STRING"""
