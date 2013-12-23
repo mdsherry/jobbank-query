@@ -3,6 +3,7 @@ import re
 
 from lxml import html
 from urllib.request import urlopen
+from urllib.error import URLError
 import concurrent.futures
 import pickle
 
@@ -65,17 +66,21 @@ class JobMiner( object ):
 		if recency:
 			url += "&TmFrm=" + recency
 		url += "&OpPage=50&nsrc=1"
-		
-		#page = open('temp', 'rt')
-		page = urlopen( url )
-		
-		tree = html.parse( page )
-		# Get all of the links from this page, while also grabbing the URL for the next page.
-		jobLinks = tree.xpath( "//div[contains( @class, 'jbBox' )]//strong/a")
-		executor = concurrent.futures.ThreadPoolExecutor( max_workers=5 )
-		links = [link.attrib['href'] for link in jobLinks]
+		links = []
+		pageNum = 1
+		while True:
 
+			page = urlopen( url + "&PgNum={}".format( pageNum ) )
+		
+			tree = html.parse( page )
+			# Get all of the links from this page, while also grabbing the URL for the next page.
+			jobLinks = tree.xpath( "//div[contains( @class, 'jbBox' )]//strong/a")
+			if not jobLinks:
+				break
+			links += [link.attrib['href'] for link in jobLinks]
+			pageNum += 1
 		ids = map( getId, links )
+		executor = concurrent.futures.ThreadPoolExecutor( max_workers=5 )
 		jobs = executor.map( self.getJob, ids )
 		# Need to grab subsequent pages too
 		return list( jobs )
@@ -86,7 +91,11 @@ class JobMiner( object ):
 		if jobId in self.data:
 			return None
 		# Check first if we've retrieved this one before; how often do we need to recheck for changes?
-		page = urlopen( "http://www.jobbank.gc.ca/detail-eng.aspx?OrderNum={}&Source=JobPosting".format( jobId ) )
+		try:
+			page = urlopen( "http://www.jobbank.gc.ca/detail-eng.aspx?OrderNum={}&Source=JobPosting".format( jobId ) )
+		except URLError as ex:
+			print("Error retrieving job #{}. Error: {}".format( jobId, ex ) )
+			return None
 		print("Retrieving job #{}".format(jobId))
 		tree = html.parse( page )
 		entry = {}
@@ -127,6 +136,8 @@ class JobMiner( object ):
 				requirements[name.lower()] = value
 
 		self.data[jobId] = entry
+		if len( self.data ) % 10 == 0:
+			self.save()
 		return (jobId, entry)
 
 if __name__ == "__main__":
@@ -145,9 +156,13 @@ if __name__ == "__main__":
 			# Some people say hourly instead of yearly. Let's correct their mistake and try again.
 			v["salary"] = v["salary"].replace("Hourly", "Yearly", 1)
 			v["salary-low"], v["salary-high"] = parseSalary( v["salary"] )
-	# miner.save()
+	#miner.save()
 	if args.scrape:
-		print (miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" ))
+		nJobs = len( miner.data )
+		results = miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" )
+		skipped = sum( 1 for x in results if x is None)
+		newNJobs = len( miner.data )
+		print("Retrieved {} jobs; {} jobs total. {} skipped or failed.".format( newNJobs - nJobs, newNJobs, skipped ) )
 		miner.save()
 	reqs = set()
 	from grammar import parse
@@ -171,4 +186,4 @@ if __name__ == "__main__":
 		from mako.template import Template
 		mytemplate = Template( filename="report.mako" )
 		import datetime
-		args.file.write( mytemplate.render( results=results, date=datetime.datetime.now(), query=args.query ) )
+		args.file.write( mytemplate.render( results=results, date=datetime.datetime.now(), query=args.query, nJobs = len( miner.data ) ) )

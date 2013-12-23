@@ -1,10 +1,15 @@
 <html>
 <head>
 	<title>JobBank report</title>
+	<style>
+	code pre { margin-left: 1em; padding: 1em; border: 1px dashed #000; background: #eee;}
+	</style>
 </head>
 <body>
 JobBank query generated ${date} from query
 <code><pre>${query}</pre></code>
+
+${len(results)} results out of ${nJobs} jobs total.
 <table>
 <tr><th>ID</th><th>Description</th><th>Salary</th></tr>
 %for result in results:

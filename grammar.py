@@ -36,10 +36,10 @@ def PContains( field, string ):
 
 
 def PMatches( field, pattern ):
-	pattern = re.compile( pattern[1:-1] )
+	pattern = re.compile( pattern[1:-1].replace(r'\/','/') )
 		
 	def pred( entry ):
-		if pattern.match( entry, re.IGNORECASE ):
+		if pattern.search( entry, re.IGNORECASE ):
 			return True
 		return False
 	
@@ -83,7 +83,7 @@ t_RBRACE = r']'
 t_QUADPUNKT = '::'
 t_LPAREN = r'\('
 t_RPAREN = r'\('
-t_PATTERN = r'/[^/]*/'
+t_PATTERN = r'/(\\/|[^/])*/'
 t_LT = '<'
 t_LTE = '<='
 t_GT = '>'
