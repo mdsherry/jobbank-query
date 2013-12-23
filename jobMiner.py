@@ -6,6 +6,7 @@ from urllib.request import urlopen
 from urllib.error import URLError
 import concurrent.futures
 import pickle
+import datetime
 
 def getId( url ):
 	url = url.split('?', 1)[1]
@@ -122,9 +123,22 @@ class JobMiner( object ):
 			entry['salaried'] = 'Yearly' in entry["salary"]
 
 			entry["startdate"] = stripStrong( body.xpath("p[@id='anticipatedStartDate']")[0] )
+			if entry["startdate"] == 'As soon as possible':
+				entry["startdate"] = datetime.datetime.now()
+			else:
+				try:
+					entry["startdate"] = datetime.datetime.strptime( entry['startdate'], "%Y/%m/%d")
+				except ValueError:
+					# Leave the stored date/time as is.
+					pass
 			entry["location"] = stripStrong( body.xpath("p[@id='location']")[0] )
 			entry["employer"] = stripStrong( body.xpath("p[@id='employer']")[0] )
-
+			entry["expires"] = stripStrong( body.xpath("p[@id='AdvUntil_en']")[0] )
+			try:
+				entry["expires"] = datetime.datetime.strptime( entry['expires'], "%Y/%m/%d" )
+			except:
+				# Leave the expiration date as it is
+				pass
 			entry['requirements'] = requirements = {}
 			reqs = body.xpath("div[@id='skillRequirements']/div[@class='indent1']")
 			for req in reqs:
@@ -150,13 +164,19 @@ if __name__ == "__main__":
 	parser.add_argument('--listreqs', action="store_true", help="List requirement names")
 	args = parser.parse_args()
 	miner = JobMiner()
-	for k,v in miner.data.items():
-		v['salary-low'], v['salary-high'] = parseSalary( v['salary'] )
-		if v["salary-low"] > 1000:
-			# Some people say hourly instead of yearly. Let's correct their mistake and try again.
-			v["salary"] = v["salary"].replace("Hourly", "Yearly", 1)
-			v["salary-low"], v["salary-high"] = parseSalary( v["salary"] )
-	#miner.save()
+	# for k,v in miner.data.items():
+	# 	if v["startdate"] == 'As soon as possible':
+	# 		v["startdate"] = datetime.datetime.now()
+	# 	else:
+	# 		try:
+	# 			v["startdate"] = datetime.datetime.strptime( v['startdate'], "%Y/%m/%d")
+	# 		except ValueError:
+	# 			# Leave the stored date/time as is.
+	# 			pass
+	# 		except TypeError:
+	# 			pass
+
+	# miner.save()
 	if args.scrape:
 		nJobs = len( miner.data )
 		results = miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" )
@@ -182,8 +202,7 @@ if __name__ == "__main__":
 	if args.listreqs:
 		args.file.write('\n'.join(sorted(reqs)))
 		args.file.write("\n")
-	if results:
+	if args.query:
 		from mako.template import Template
 		mytemplate = Template( filename="report.mako" )
-		import datetime
 		args.file.write( mytemplate.render( results=results, date=datetime.datetime.now(), query=args.query, nJobs = len( miner.data ) ) )

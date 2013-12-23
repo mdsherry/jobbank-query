@@ -1,6 +1,7 @@
 import re
 import operator
 from ply import lex, yacc
+import datetime
 
 def PAnd( p1, p2 ):
 	return lambda x: p1(x) and p2(x)
@@ -52,6 +53,15 @@ def PCompare( field, value, op ):
 		return op( float( entry ), value )
 	return lambda entry: predOnFields( field, entry, pred )
 
+def PCompareDate( field, value, op ):
+	def pred( entry ):
+		try:
+			return op( entry, value )
+		except TypeError:
+			return False
+	return lambda entry: predOnFields( field, entry, pred )
+
+
 reserved = {
 	'and': 'AND',
 	'or': 'OR',
@@ -74,7 +84,7 @@ def uniq( l ):
 	return result
 
 tokens = [ 'LBRACE', 'RBRACE', 'LPAREN', 'RPAREN', 'DOESNT',
-	'LT', 'GT', 'LTE', 'GTE', 'EQ','NE', 'NUMBER', 
+	'LT', 'GT', 'LTE', 'GTE', 'EQ','NE', 'NUMBER', 'DATE',
 	'NAME', 'QUADPUNKT', 'STRING', 'PATTERN'] + uniq( list(reserved.values()) )
 
 
@@ -91,6 +101,21 @@ t_GTE = '>='
 t_EQ = '='
 t_NE = '!='
 t_NUMBER = r'\d+(\.\d+)?'
+
+def t_DATE(t):
+	"""today|next\s+(month|week)|\d{4}/\d{2}/\d{2}"""
+	now = datetime.date.today()
+	if t.value.lower() == "today":
+		t.value = now
+	elif 'week' in t.value.lower():
+		t.value = now + datetime.timedelta( days = 7 - now.weekday() )
+	elif 'month' in t.value.lower():
+		t.value = now + datetime.timedelta( days = 32 - now.day )
+		t.value += datetime.timedelta( days= 1 - t.value.day )
+	else:
+		t.value = datetime.date.strptime( t.value, "%Y/%m/%d")
+	t.value = datetime.datetime.combine( t.value, datetime.datetime.min.time() )
+	return t
 
 def t_DOESNT(t):
 	"""DOESN'T"""
@@ -171,6 +196,12 @@ def p_condition_numcompare( p ):
 		'>': operator.gt,
 		'<=': operator.le,
 		'>=': operator.ge }[p[2]])
+
+def p_condition_datecompare( p ):
+	"""condition : field BEFORE DATE
+	             | field AFTER DATE
+	"""
+	p[0] = p[0] = PCompareDate( p[1], p[3], operator.le if p[2].lower() == 'before' else operator.ge )
 
 def p_field_base(p):
 	"""field : LBRACE NAME optnames RBRACE"""
