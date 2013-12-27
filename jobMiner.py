@@ -9,14 +9,31 @@ import pickle
 import datetime
 
 def getId( url ):
+	"""Takes a JobBank URL and extracts the job ID from it"""
 	url = url.split('?', 1)[1]
 	return int( dict( [pair.split('=') for pair in url.split('&') ] )['OrderNum'] )
 
 def stripStrong( el ):
+	"""Removes a <strong> tag and its contents, and returns the remaining text."""
 	el.xpath("strong")[0].drop_tree()
 	return el.text_content()
 
 def parseSalary( s ):
+	"""Extracts the hourly rate from a salary statement.
+
+	The four main cases that it handles are:
+		$xxx to $yyy Hourly
+		$xxx Hourly
+		$xxx to $yyy Yearly
+		$xxx Yearly
+	In the latter two cases, it also looks for a statement of how many hours are worked per week.
+	It then uses this figure to convert the annual rate to an hourly one, working on the assumption
+	of 52.125 weeks per year (produces correct average for working days per year).
+
+	If a number of hours per week is not provided, it assumes 40 hours per week (or 2087 per year).
+
+	This function doesn't take benefits into account.
+	"""
 	# Check for hourly first
 	match = re.match(r"\$([0123456789,.]+)\s+to\s+\$([0123456789,.]+)\s+Hourly", s, re.IGNORECASE )
 	if match:
@@ -43,18 +60,24 @@ def parseSalary( s ):
 			return low, high
 		else:
 			return low / 2087, high / 2087
+	# Some jobs don't provide any wage information that we can parse. 
+	# For example, jobs that only pay on commission.
+
 	return 0, 0
+
+
 class JobMiner( object ):
 
-	def __init__( self ):
+	def __init__( self, fname="cached" ):
+		self.filename = fname
 		try:
-			f = open("cached", 'rb')
+			f = open(fname, 'rb')
 			self.data = pickle.load( f )
 		except:
 			self.data = {}
 
 	def save(self):
-		f = open("cached", 'wb')
+		f = open(self.filename, 'wb')
 		pickle.dump( self.data, f )
 
 	def getJobs( self, searchRegions = [], jobCategories=[], recency=None):
