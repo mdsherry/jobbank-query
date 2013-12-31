@@ -4,7 +4,16 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
 import ui_jobbankmain
+import ui_jobentry
 
+class JobEntry( QMainWindow, ui_jobentry.Ui_JobEntry ):
+	def __init__( self, parent, job ):
+		super( JobEntry, self ).__init__( parent )
+		self.setupUi( self )
+
+		self.job = job
+		self.id.setText( str( job['id'] ) )
+		self.title.setText( job['title'] )
 
 class Form( QMainWindow, ui_jobbankmain.Ui_MainWindow ):
 	def __init__( self, parent=None ):
@@ -24,25 +33,20 @@ class Form( QMainWindow, ui_jobbankmain.Ui_MainWindow ):
 		
 		p = parse( self.queryText.toPlainText() )
 		if p:
-			self.queryResults.clear()
-			self.queryResults.setSortingEnabled( False )
-			headers = ["ID", "Title", "Salary (low)"]
-			self.queryResults.setColumnCount( len( headers ) )
-			self.queryResults.setHorizontalHeaderLabels( headers )
-
+			
 			results = []
 			for jobId, job in self.miner.data.items():
 				if p( job ):
 					results.append( job )
 					#print( job["id"] )
-			self.queryResults.setRowCount( len( results ) )
+			
 			for i, job in enumerate( results ):
-					item = QTableWidgetItem( str( job["id"] ) )
-					item.data = str( job["id"] )
-					self.queryResults.setItem( i, 0, item )
-					self.queryResults.setItem( i, 1, QTableWidgetItem( job["title"]))
-					self.queryResults.setItem( i, 2, QTableWidgetItem( str( job["salary-low"])) )
-			self.queryResults.setSortingEnabled( True )
+				item = JobEntry( None, job )
+				self.queryResultsLayout.addWidget( item )
+				item.show()
+				if i > 4:
+					break
+			
 			
 		else:
 			print("Invalid query!")

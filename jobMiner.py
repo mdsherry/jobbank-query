@@ -18,6 +18,9 @@ def stripStrong( el ):
 	el.xpath("strong")[0].drop_tree()
 	return el.text_content()
 
+def cleanTitle( s ):
+	return re.sub( r"(.*)\s+(\(NOC: \d+\))\s+", r"\1 \2", s )
+
 def parseSalary( s ):
 	"""Extracts the hourly rate from a salary statement.
 
@@ -34,13 +37,20 @@ def parseSalary( s ):
 
 	This function doesn't take benefits into account.
 	"""
+
+	#TODO: Handle 'Monthly'
+	match = re.match( r".*for\s+([0-9.,]+)\s+hours\s+per\s+week", s, re.IGNORECASE )
+	if match:
+		hours = float( match.group(1).replace(',','') )
+	else:
+		hours = 40
 	# Check for hourly first
 	match = re.match(r"\$([0123456789,.]+)\s+to\s+\$([0123456789,.]+)\s+Hourly", s, re.IGNORECASE )
 	if match:
-		return float( match.group(1).replace(',','') ), float( match.group(2).replace(',','') )
+		return float( match.group(1).replace(',','') ), float( match.group(2).replace(',','') ), hours
 	match = re.match(r"\$([0123456789,.]+)\s+Hourly", s, re.IGNORECASE )
 	if match:
-		return float( match.group(1).replace(',','') ), float( match.group(1).replace(',','') )
+		return float( match.group(1).replace(',','') ), float( match.group(1).replace(',','') ), hours
 	low = high = None
 	match = re.match(r"\$([0123456789,.]+)\s+to\s+\$([0123456789,.]+)\s+Yearly", s, re.IGNORECASE )
 	if match:
@@ -51,19 +61,15 @@ def parseSalary( s ):
 			low, high = float( match.group(1).replace(',','') ), float( match.group(1).replace(',','') )
 
 	if low:
-		match = re.match( r".*for\s+([0-9.,]+)\s+hours\s+per\s+week", s, re.IGNORECASE )
-		if match:
-			hours = float( match.group(1).replace(',','') )
-			weeksPerYear = 52.125 # Average
-			low /= (weeksPerYear * hours)
-			high /= (weeksPerYear * hours)
-			return low, high
-		else:
-			return low / 2087, high / 2087
+		weeksPerYear = 52.125 # Average
+		low /= (weeksPerYear * hours)
+		high /= (weeksPerYear * hours)
+		return low, high, hours
+		
 	# Some jobs don't provide any wage information that we can parse. 
 	# For example, jobs that only pay on commission.
 
-	return 0, 0
+	return 0, 0, 0
 
 
 class JobMiner( object ):
@@ -130,7 +136,7 @@ class JobMiner( object ):
 		else:
 			title = body.xpath("//span[@class='JobTitle']")[0]
 			entry['id'] = jobId
-			entry['title'] = title.text_content()
+			entry['title'] = cleanTitle( title.text_content() )
 			# Need to trim whitespace here
 
 			termsOfEmployment = body.xpath("p[@id='termOfEmployment']")[0]
@@ -138,11 +144,11 @@ class JobMiner( object ):
 
 			entry["salary"] = stripStrong( body.xpath("p[@id='salary']")[0] )
 			
-			entry["salary-low"], entry["salary-high"] = parseSalary( entry["salary"] )
+			entry["salary-low"], entry["salary-high"], entry["hoursperweek"] = parseSalary( entry["salary"] )
 			if entry["salary-low"] > 1000:
 				# Some people say hourly instead of yearly. Let's correct their mistake and try again.
 				entry["salary"] = entry["salary"].replace("Hourly", "Yearly", 1)
-				entry["salary-low"], entry["salary-high"] = parseSalary( entry["salary"] )
+				entry["salary-low"], entry["salary-high"], entry["hoursperweek"] = parseSalary( entry["salary"] )
 			entry['salaried'] = 'Yearly' in entry["salary"]
 
 			entry["startdate"] = stripStrong( body.xpath("p[@id='anticipatedStartDate']")[0] )
@@ -187,25 +193,28 @@ if __name__ == "__main__":
 	parser.add_argument('--listreqs', action="store_true", help="List requirement names")
 	args = parser.parse_args()
 	miner = JobMiner()
-	# for k,v in miner.data.items():
-	# 	if v["startdate"] == 'As soon as possible':
-	# 		v["startdate"] = datetime.datetime.now()
-	# 	else:
-	# 		try:
-	# 			v["startdate"] = datetime.datetime.strptime( v['startdate'], "%Y/%m/%d")
-	# 		except ValueError:
-	# 			# Leave the stored date/time as is.
-	# 			pass
-	# 		except TypeError:
-	# 			pass
-
-	# miner.save()
+	for k,v in miner.data.items():
+	 	v["salary-low"], v["salary-high"], v["hoursperweek"] = parseSalary( v["salary"] )
+		
+	miner.save()
 	if args.scrape:
 		nJobs = len( miner.data )
 		results = miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" )
 		skipped = sum( 1 for x in results if x is None)
 		newNJobs = len( miner.data )
 		print("Retrieved {} jobs; {} jobs total. {} skipped or failed.".format( newNJobs - nJobs, newNJobs, skipped ) )
+		# Purge expired jobs
+		now = datetime.datetime.now()
+		deleted = []
+		for jobId, job in miner.data.items():
+			if ('expires' not in job or 
+				type( job['expires'] ) != datetime.datetime or
+				job['expires'] < now ):
+				deleted.append( jobId )
+		for jobId in deleted:
+			del miner.data[ jobId ]
+		if deleted:
+			print("Removed {} expired jobs.".format( len( deleted ) ) ) 
 		miner.save()
 	reqs = set()
 	from grammar import parse
