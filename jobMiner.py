@@ -7,6 +7,7 @@ from urllib.error import URLError
 import concurrent.futures
 import pickle
 import datetime
+import NOC
 
 def getId( url ):
 	"""Takes a JobBank URL and extracts the job ID from it"""
@@ -20,6 +21,17 @@ def stripStrong( el ):
 
 def cleanTitle( s ):
 	return re.sub( r"(.*)\s+(\(NOC: \d+\))\s+", r"\1 \2", s )
+
+def setNOC( job ):
+	match = re.match( r".*\(NOC: (\d+)\)\s*", job["title"])
+	if not match:
+		return
+	noc = match.group(1)
+	job["noc_type"] = NOC.top[ noc[:1] ]
+	job["noc_major"] = NOC.major[ noc[:2] ]
+	job["noc_minor"] = NOC.minor[ noc[:3] ]
+	job["noc_individual"] = NOC.individual[ noc ]
+	job["noc"] = noc
 
 def parseSalary( s ):
 	"""Extracts the hourly rate from a salary statement.
@@ -137,6 +149,7 @@ class JobMiner( object ):
 			title = body.xpath("//span[@class='JobTitle']")[0]
 			entry['id'] = jobId
 			entry['title'] = cleanTitle( title.text_content() )
+			setNOC( entry )
 			# Need to trim whitespace here
 
 			termsOfEmployment = body.xpath("p[@id='termOfEmployment']")[0]
@@ -194,7 +207,8 @@ if __name__ == "__main__":
 	args = parser.parse_args()
 	miner = JobMiner()
 	for k,v in miner.data.items():
-	 	v["salary-low"], v["salary-high"], v["hoursperweek"] = parseSalary( v["salary"] )
+	 	#v["salary-low"], v["salary-high"], v["hoursperweek"] = parseSalary( v["salary"] )
+	 	setNOC( v )
 		
 	miner.save()
 	if args.scrape:
@@ -223,8 +237,6 @@ if __name__ == "__main__":
 	else:
 		p = lambda x: False
 	results = []
-	#p = parse("[requirements::*] matches /.*Drug test.*/")
-	#p = parse("[requirements::Languages] doesn't contain \"French\"")
 
 	for jobId, job in miner.data.items():
 		for req in job['requirements']:
