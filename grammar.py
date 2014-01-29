@@ -170,7 +170,12 @@ def p_query_condition(p):
 def p_condition_matches(p):
 	"""condition : field MATCH PATTERN"""
 	p[0] = PMatches( p[1], p[3] )
-	print( p[0] )
+	
+def p_condition_doesntmatch(p):
+	"""condition : field DOESNT MATCH PATTERN"""
+	p[0] = PNot( PMatches( p[1], p[3] ) )
+	
+
 
 def p_condition_contains(p):
 	"""condition : field CONTAIN STRING"""
