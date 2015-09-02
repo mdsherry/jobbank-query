@@ -27,9 +27,14 @@ def predOnFields( field, entry, pred ):
 
 	return pred( entry )
 
+def toUpper(l):
+	return [el.upper() for el in l if hasattr( el, 'upper')	]
+
 def PContains( field, string ):
 	def pred( entry ):
-		if hasattr( entry, 'upper' ):
+		if type( entry ) == list:
+			return string.upper() in toUpper( entry )
+		elif hasattr( entry, 'upper' ):
 			return string.upper() in entry.upper()
 		return False
 	
@@ -37,10 +42,10 @@ def PContains( field, string ):
 
 
 def PMatches( field, pattern ):
-	pattern = re.compile( pattern[1:-1].replace(r'\/','/') )
-		
+	pattern = re.compile( pattern[1:-1].replace(r'\/','/'), re.IGNORECASE )
+	
 	def pred( entry ):
-		if pattern.search( entry, re.IGNORECASE ):
+		if pattern.search( str(entry) ):
 			return True
 		return False
 	
@@ -92,7 +97,7 @@ t_LBRACE = r'\['
 t_RBRACE = r']'
 t_QUADPUNKT = '::'
 t_LPAREN = r'\('
-t_RPAREN = r'\('
+t_RPAREN = r'\)'
 t_PATTERN = r'/(\\/|[^/])*/'
 t_LT = '<'
 t_LTE = '<='
@@ -103,15 +108,28 @@ t_NE = '!='
 t_NUMBER = r'\d+(\.\d+)?'
 
 def t_DATE(t):
-	"""today|next\s+(month|week)|\d{4}/\d{2}/\d{2}"""
+	"""today|yesterday|\d+\s+(day|month|week)s?\s+ago|next\s+(month|week)|\d{4}/\d{2}/\d{2}"""
 	now = datetime.date.today()
 	if t.value.lower() == "today":
 		t.value = now
-	elif 'week' in t.value.lower():
-		t.value = now + datetime.timedelta( days = 7 - now.weekday() )
-	elif 'month' in t.value.lower():
-		t.value = now + datetime.timedelta( days = 32 - now.day )
-		t.value += datetime.timedelta( days= 1 - t.value.day )
+	elif 'next' in t.value.lower():
+		if 'week' in t.value.lower():
+			t.value = now + datetime.timedelta( days = 7 - now.weekday() )
+		elif 'month' in t.value.lower():
+			t.value = now + datetime.timedelta( days = 32 - now.day )
+			t.value += datetime.timedelta( days= 1 - t.value.day )
+	elif 'ago' in t.value.lower():
+		matches = re.match('(\d+)\s+(day|month|week)s?\s+ago', t.value.lower())
+		n = int( matches.group(1) )
+		unit = matches.group(2).lower()
+		# These don't really match the same semantics as 'next FOO'.
+		# TODO: Decide on one set of semantics and modify the other to match.
+		if unit == 'day':
+			t.value = now + datetime.timedelta( days=-1 )
+		elif unit == 'week':
+			t.value = now + datetime.timedelta( days=-7 )
+		elif unit == 'month':
+			t.value = now + datetime.timedelta( days=-31 )
 	else:
 		t.value = datetime.date.strptime( t.value, "%Y/%m/%d")
 	t.value = datetime.datetime.combine( t.value, datetime.datetime.min.time() )

@@ -1,0 +1,11 @@
+[hoursperweek] > 0 
+and ([location] contains 'Waterloo' or [location] contains 'Kitchener' or [location] contains 'Cambridge')
+and [noc] matches /1123|121[13-5]|122[1-6]|1241|1254|1411|1414|1415|1422|1423|1451|1452|1454|151[1-3]|152[1-6]|2171|2172|2282|2283|5113|512[1-3]|5211|5212|5221|5222|5226|5227|524[1-5]|6211|6221|6222|6322|6332|6345|6411|6421|6511|6525|6531|6541|6552|6611|6622|6023|67..|7294|7381|7384|7452|8432|95..|9611|9612|961[4-7]|9619/
+and [salary-low] >= 11
+and [requirements::credentialscertificateslicencesmembershipscoursesetc] doesn't contains 'forklift'
+and [description] doesn't contain 'bilingual'
+and ([requirements::transportationtravelinformation] contains 'public transportation is available' or [requirements::transportationtravelinformation] doesn't contain 'own transportation')
+and [requirements::transportationtravelinformation] doesn't contain 'public transportation is not available'
+and [requirements::transportationtravelinformation] doesn't contain 'own vehicle'
+and [requirements::worksiteenvironment] doesn't match /\b(hot|cold)\b/
+and not([termsofemployment] contains 'day' and [termsofemployment] contains 'full time')

@@ -125,6 +125,7 @@ class JobMiner( object ):
 		executor = concurrent.futures.ThreadPoolExecutor( max_workers=5 )
 		jobs = executor.map( self.getJob, ids )
 		# Need to grab subsequent pages too
+		executor.shutdown(True)
 		return list( jobs )
 
 
@@ -146,6 +147,7 @@ class JobMiner( object ):
 			print("Invalid job")
 			return None
 		else:
+			entry['added'] = datetime.datetime.now()
 			title = body.xpath("//span[@class='JobTitle']")[0]
 			entry['id'] = jobId
 			entry['title'] = cleanTitle( title.text_content() )
@@ -192,8 +194,7 @@ class JobMiner( object ):
 				requirements[name.lower()] = value
 
 		self.data[jobId] = entry
-		if len( self.data ) % 10 == 0:
-			self.save()
+		
 		return (jobId, entry)
 
 if __name__ == "__main__":
@@ -204,6 +205,7 @@ if __name__ == "__main__":
 	parser.add_argument('--query', help='Query to run against collected jobs')
 	parser.add_argument('--file', type=argparse.FileType('wt'), default=sys.stdout, help="Filename to use for output (defaults to stdout)")
 	parser.add_argument('--listreqs', action="store_true", help="List requirement names")
+	parser.add_argument('--input', '-i', help="Input file")
 	args = parser.parse_args()
 	miner = JobMiner()
 	for k,v in miner.data.items():
@@ -213,7 +215,7 @@ if __name__ == "__main__":
 	miner.save()
 	if args.scrape:
 		nJobs = len( miner.data )
-		results = miner.getJobs( searchRegions = ["GON008"], recency = "E7Days" )
+		results = miner.getJobs( searchRegions = ["GON008"], recency="E7Days" )#, recency = "E7Days" )
 		skipped = sum( 1 for x in results if x is None)
 		newNJobs = len( miner.data )
 		print("Retrieved {} jobs; {} jobs total. {} skipped or failed.".format( newNJobs - nJobs, newNJobs, skipped ) )
@@ -232,8 +234,12 @@ if __name__ == "__main__":
 		miner.save()
 	reqs = set()
 	from grammar import parse
-	if args.query:
-		p = parse( args.query )
+	query = args.query
+	if args.input:
+		f = open(args.input, 'rt')
+		query = f.read()
+	if query:
+		p = parse( query )
 	else:
 		p = lambda x: False
 	results = []
@@ -246,7 +252,7 @@ if __name__ == "__main__":
 	if args.listreqs:
 		args.file.write('\n'.join(sorted(reqs)))
 		args.file.write("\n")
-	if args.query:
+	if query:
 		from mako.template import Template
 		mytemplate = Template( filename="report.mako" )
-		args.file.write( mytemplate.render( results=results, date=datetime.datetime.now(), query=args.query, nJobs = len( miner.data ) ) )
+		args.file.write( mytemplate.render( results=results, date=datetime.datetime.now(), query=query, nJobs = len( miner.data ) ) )
